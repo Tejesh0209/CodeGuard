@@ -5,6 +5,7 @@ import os
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from dotenv import load_dotenv
 from api.github_client import fetch_pr_diff
+from agents.style_agent import StyleAgent
 
 load_dotenv()
 
@@ -21,41 +22,38 @@ def verify_signature(payload: bytes, signature: str) -> bool:
         hashlib.sha256
     ).hexdigest()
     return hmac.compare_digest(f"sha256={excepted}",signature)
+
 async def process_pr(payload: dict):
-    """
-    Background task — runs after we return 200 to GitHub.
-    GitHub expects a fast response, so heavy work goes here.
-    """
-    repo_name = payload["repository"]["full_name"]
-    pr_number = payload["pull_request"]["number"]
-    pr_title  = payload["pull_request"]["title"]
-    pr_author = payload["pull_request"]["user"]["login"]
+    try:
+        repo_name = payload["repository"]["full_name"]
+        pr_number = payload["pull_request"]["number"]
+        pr_title  = payload["pull_request"]["title"]
+        pr_author = payload["pull_request"]["user"]["login"]
 
-    print(f"\n{'='*60}")
-    print(f"CodeGuard — New PR Detected")
-    print(f"   Repo   : {repo_name}")
-    print(f"   PR #   : {pr_number}")
-    print(f"   Title  : {pr_title}")
-    print(f"   Author : {pr_author}")
-    print(f"{'='*60}")
+        print(f"\n{'='*60}")
+        print(f"CodeGuard — New PR Detected")
+        print(f"   Repo   : {repo_name}")
+        print(f"   PR #   : {pr_number}")
+        print(f"   Title  : {pr_title}")
+        print(f"   Author : {pr_author}")
+        print(f"{'='*60}")
 
-    # Fetch the diff from GitHub API
-    diff_chunks = await fetch_pr_diff(repo_name, pr_number)
+        # Step 1 — fetch diff
+        diff_chunks = await fetch_pr_diff(repo_name, pr_number)
+        print(f"\n📂 Files changed: {len(diff_chunks)}")
 
-    print(f"\nFiles changed: {len(diff_chunks)}")
-    for chunk in diff_chunks:
-        print(f"\n {chunk['filename']}")
-        print(f"     Status    : {chunk['status']}")
-        print(f"     Additions : +{chunk['additions']}")
-        print(f"     Deletions : -{chunk['deletions']}")
-        if chunk["patch"]:
-            preview = chunk["patch"].split("\n")[:8]
-            print(f"     Patch preview:")
-            for line in preview:
-                print(f"       {line}")
+        # Step 2 — run Style Agent
+        print("Initializing Style Agent...")
+        style_agent = StyleAgent()
+        print("Style Agent initialized")
+        review = await style_agent.review(diff_chunks)
 
-    print(f"\n Diff extraction complete — ready for agent layer\n")
-    return diff_chunks
+        return review
+
+    except Exception as e:
+        print(f"\n ERROR in process_pr: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @router.post("/webhook")
@@ -77,7 +75,7 @@ async def github_webhook(
     if event == "pull_request":
         action = payload.get("action", "")
         if action in ["opened", "synchronize", "reopened"]:
-            print(f"⚡ PR event received: action={action}")
+            print(f"PR event received: action={action}")
             # Step 3 — process in background, return fast to GitHub
             background_tasks.add_task(process_pr, payload)
             return {
