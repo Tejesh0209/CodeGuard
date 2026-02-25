@@ -5,8 +5,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from typing import List
+from rag.retriever import CodeRetriever
 
 load_dotenv()
+
 
 class StyleIssue(BaseModel):
     file: str = Field(description="filename where issue was found")
@@ -16,25 +18,30 @@ class StyleIssue(BaseModel):
     message: str = Field(description="clear description of the issue")
     suggestion: str = Field(description="exactly how to fix it")
 
+
 class StyleReview(BaseModel):
     pr_summary: str = Field(description="one sentence summary of what this PR does")
     issues: List[StyleIssue] = Field(description="list of all style issues found")
     overall_score: int = Field(description="code quality score from 1-10")
     approved: bool = Field(description="true if PR meets style standards")
 
+
 STYLE_PROMPT = ChatPromptTemplate.from_messages([
     (
         "system",
-        """You are CodeGuard's Style Agent — a senior software engineer 
-doing a thorough code style review. You review code diffs and identify 
+        """You are CodeGuard's Style Agent — a senior software engineer
+doing a thorough code style review. You review code diffs and identify
 style, formatting, naming, complexity, and documentation issues.
 
 You are strict but fair. You only flag real issues, not personal preferences.
 
+IMPORTANT: You have access to similar code from this team's codebase.
+Use it to understand their conventions and flag deviations specifically.
+
 Categories you review:
 - naming: variable/function/class names that are unclear or inconsistent
-- formatting: indentation, line length, whitespace issues  
-- complexity: functions too long, too many nested blocks, high cyclomatic complexity
+- formatting: indentation, line length, whitespace issues
+- complexity: functions too long, too many nested blocks
 - documentation: missing docstrings, unclear comments, no type hints
 - best_practice: anti-patterns, poor error handling, code duplication
 
@@ -47,14 +54,18 @@ Severity levels:
     ),
     (
         "human",
-        """Review this pull request diff and return a structured style review.
+        """Review this pull request diff.
+
+{team_context}
 
 PR Diff:
 {diff}
 
-Return your review in the exact JSON format specified."""
+Return your review in the exact JSON format specified.
+Reference specific examples from the team codebase when flagging issues."""
     )
 ])
+
 
 class StyleAgent:
     def __init__(self):
@@ -63,17 +74,32 @@ class StyleAgent:
             temperature=0,
             api_key=os.getenv("OPENAI_API_KEY")
         )
-        self.parser = JsonOutputParser(pydantic_object=StyleReview)
-        self.chain = STYLE_PROMPT | self.llm | self.parser
+        self.parser    = JsonOutputParser(pydantic_object=StyleReview)
+        self.chain     = STYLE_PROMPT | self.llm | self.parser
+        self.retriever = CodeRetriever()
 
     async def review(self, diff_chunks: list[dict]) -> dict:
         formatted_diff = self._format_diff(diff_chunks)
-        print(f"\n🎨 Style Agent starting review...")
-        print(f"   Analyzing {len(diff_chunks)} file(s)...")
+
+        # RAG — retrieve similar code from team codebase
+        print(f"\n🔍 Retrieving similar code from team codebase...")
+        similar_chunks = self.retriever.retrieve(
+            query=formatted_diff[:1000],
+            repo="Tejesh0209/SentinelAI",
+            top_k=5
+        )
+        team_context = self.retriever.format_for_prompt(similar_chunks)
+        print(f"   Found {len(similar_chunks)} similar patterns ✅")
+
+        print(f"\nStyle Agent starting review...")
+        print(f"   Analyzing {len(diff_chunks)} file(s) with team context...")
+
         result = await self.chain.ainvoke({
-            "diff": formatted_diff,
-            "format_instructions": self.parser.get_format_instructions()
+            "diff"                : formatted_diff,
+            "team_context"        : team_context,
+            "format_instructions" : self.parser.get_format_instructions()
         })
+
         self._print_review(result)
         return result
 
@@ -90,18 +116,26 @@ Changes:
 
     def _print_review(self, review: dict):
         print(f"\n{'='*60}")
-        print(f"🎨 STYLE REVIEW COMPLETE")
+        print(f"STYLE REVIEW COMPLETE")
         print(f"{'='*60}")
-        print(f"📋 Summary : {review.get('pr_summary', 'N/A')}")
-        print(f"⭐ Score   : {review.get('overall_score', 0)}/10")
-        print(f"✅ Approved: {review.get('approved', False)}")
+        print(f"Summary : {review.get('pr_summary', 'N/A')}")
+        print(f"Score   : {review.get('overall_score', 0)}/10")
+        print(f"Approved: {review.get('approved', False)}")
+
         issues = review.get('issues', [])
         print(f"\n🔍 Issues Found: {len(issues)}")
+
         for i, issue in enumerate(issues, 1):
-            severity_emoji = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(issue.get('severity', 'LOW'), "⚪")
+            severity_emoji = {
+                "HIGH"  : "🔴",
+                "MEDIUM": "🟡",
+                "LOW"   : "🟢"
+            }.get(issue.get('severity', 'LOW'), "⚪")
+
             print(f"\n  {i}. {severity_emoji} [{issue.get('severity')}] {issue.get('category', '').upper()}")
-            print(f"     File      : {issue.get('file')}")
-            print(f"     Line      : {issue.get('line')}")
-            print(f"     Issue     : {issue.get('message')}")
-            print(f"     Fix       : {issue.get('suggestion')}")
+            print(f"     File  : {issue.get('file')}")
+            print(f"     Line  : {issue.get('line')}")
+            print(f"     Issue : {issue.get('message')}")
+            print(f"     Fix   : {issue.get('suggestion')}")
+
         print(f"\n{'='*60}\n")
