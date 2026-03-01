@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from api.webhook_handler import router as webhook_router
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 app = FastAPI(title="Codeguard", version="0.1.0")
 app.include_router(webhook_router)

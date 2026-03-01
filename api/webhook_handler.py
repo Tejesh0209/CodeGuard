@@ -5,23 +5,24 @@ import os
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from dotenv import load_dotenv
 from api.github_client import fetch_pr_diff
-from agents.style_agent import StyleAgent
+from orchestration.graph import codeguard_graph
 
 load_dotenv()
 
 router = APIRouter()
-WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET","")
+WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+
 
 def verify_signature(payload: bytes, signature: str) -> bool:
-    "Verify the weebhook coming from github not from someone else"
     if not signature or not signature.startswith("sha256="):
         return False
-    excepted = hmac.new(
+    expected = hmac.new(
         WEBHOOK_SECRET.encode(),
         payload,
         hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(f"sha256={excepted}",signature)
+    return hmac.compare_digest(f"sha256={expected}", signature)
+
 
 async def process_pr(payload: dict):
     try:
@@ -31,7 +32,7 @@ async def process_pr(payload: dict):
         pr_author = payload["pull_request"]["user"]["login"]
 
         print(f"\n{'='*60}")
-        print(f"CodeGuard — New PR Detected")
+        print(f"🔍 CodeGuard — New PR Detected")
         print(f"   Repo   : {repo_name}")
         print(f"   PR #   : {pr_number}")
         print(f"   Title  : {pr_title}")
@@ -42,16 +43,31 @@ async def process_pr(payload: dict):
         diff_chunks = await fetch_pr_diff(repo_name, pr_number)
         print(f"\n📂 Files changed: {len(diff_chunks)}")
 
-        # Step 2 — run Style Agent
-        print("Initializing Style Agent...")
-        style_agent = StyleAgent()
-        print("Style Agent initialized")
-        review = await style_agent.review(diff_chunks)
+        # Step 2 — build initial state
+        initial_state = {
+            "repo_name"       : repo_name,
+            "pr_number"       : pr_number,
+            "pr_title"        : pr_title,
+            "pr_author"       : pr_author,
+            "diff_chunks"     : diff_chunks,
+            "style_review"    : None,
+            "security_review" : None,
+            "perf_review"     : None,
+            "severity_level"  : "LOW",
+            "should_autofix"  : False,
+            "final_report"    : None,
+            "messages"        : []
+        }
 
-        return review
+        # Step 3 — run LangGraph
+        config = {"configurable": {"thread_id": f"pr-{repo_name}-{pr_number}"}}
+        result = await codeguard_graph.ainvoke(initial_state, config=config)
+
+        print(f"\nCodeGuard review complete for PR #{pr_number}")
+        return result
 
     except Exception as e:
-        print(f"\n ERROR in process_pr: {type(e).__name__}: {e}")
+        print(f"\nERROR: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
 
@@ -64,24 +80,20 @@ async def github_webhook(
     payload_bytes = await request.body()
     signature     = request.headers.get("X-Hub-Signature-256", "")
 
-    # Step 1 — verify it really came from GitHub
     if not verify_signature(payload_bytes, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     event   = request.headers.get("X-GitHub-Event", "")
     payload = json.loads(payload_bytes)
 
-    # Step 2 — only handle PR events
     if event == "pull_request":
         action = payload.get("action", "")
         if action in ["opened", "synchronize", "reopened"]:
-            print(f"PR event received: action={action}")
-            # Step 3 — process in background, return fast to GitHub
+            print(f"⚡ PR event received: action={action}")
             background_tasks.add_task(process_pr, payload)
             return {
                 "status": "processing",
-                "pr": payload["pull_request"]["number"]
+                "pr"    : payload["pull_request"]["number"]
             }
 
     return {"status": "ignored", "event": event}
-
