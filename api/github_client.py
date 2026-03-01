@@ -20,9 +20,9 @@ def generate_jwt() -> str:
 
     now = int(time.time())
     payload = {
-        "iat": now - 60,        # issued 60s ago (handles clock drift)
-        "exp": now + (10 * 60), # expires in 10 minutes
-        "iss": APP_ID           # our App ID
+        "iat": now - 60,
+        "exp": now + (10 * 60),
+        "iss": APP_ID
     }
     return jwt.encode(payload, private_key, algorithm="RS256")
 
@@ -33,16 +33,14 @@ async def get_installation_token(repo_full_name: str) -> str:
     This token is what we use to actually call GitHub API.
     """
     app_jwt = generate_jwt()
-    owner   = repo_full_name.split("/")[0]  # "Tejesh0209"
+    owner   = repo_full_name.split("/")[0]
 
     async with httpx.AsyncClient() as client:
-
-        # Find which installation ID belongs to our target owner
         resp = await client.get(
             "https://api.github.com/app/installations",
             headers={
                 "Authorization": f"Bearer {app_jwt}",
-                "Accept": "application/vnd.github+json",
+                "Accept"       : "application/vnd.github+json",
             }
         )
         resp.raise_for_status()
@@ -57,12 +55,11 @@ async def get_installation_token(repo_full_name: str) -> str:
         if not installation_id:
             raise ValueError(f"No installation found for {owner}")
 
-        # Exchange for an installation access token
         token_resp = await client.post(
             f"https://api.github.com/app/installations/{installation_id}/access_tokens",
             headers={
                 "Authorization": f"Bearer {app_jwt}",
-                "Accept": "application/vnd.github+json",
+                "Accept"       : "application/vnd.github+json",
             }
         )
         token_resp.raise_for_status()
@@ -81,7 +78,7 @@ async def fetch_pr_diff(repo_full_name: str, pr_number: int) -> list[dict]:
             f"https://api.github.com/repos/{repo_full_name}/pulls/{pr_number}/files",
             headers={
                 "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
+                "Accept"       : "application/vnd.github+json",
             }
         )
         resp.raise_for_status()
@@ -91,10 +88,35 @@ async def fetch_pr_diff(repo_full_name: str, pr_number: int) -> list[dict]:
     for f in files:
         chunks.append({
             "filename"  : f["filename"],
-            "status"    : f["status"],        # added / modified / removed
+            "status"    : f["status"],
             "additions" : f["additions"],
             "deletions" : f["deletions"],
-            "patch"     : f.get("patch", ""), # the actual diff lines
+            "patch"     : f.get("patch", ""),
         })
 
     return chunks
+
+
+async def post_pr_comment(repo_name: str, pr_number: int, comment: str):
+    """
+    Post a review comment on a GitHub PR.
+    Uses the issues/comments endpoint which works for both
+    issues and pull requests.
+    """
+    token = await get_installation_token(repo_name)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept"       : "application/vnd.github+json"
+            },
+            json={"body": comment}
+        )
+
+    if response.status_code == 201:
+        print(f"   Comment posted successfully to PR #{pr_number}")
+    else:
+        print(f"   Failed to post comment: {response.status_code}")
+        print(f"   {response.text}")

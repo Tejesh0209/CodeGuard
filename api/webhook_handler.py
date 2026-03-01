@@ -45,18 +45,22 @@ async def process_pr(payload: dict):
 
         # Step 2 — build initial state
         initial_state = {
-            "repo_name"       : repo_name,
-            "pr_number"       : pr_number,
-            "pr_title"        : pr_title,
-            "pr_author"       : pr_author,
-            "diff_chunks"     : diff_chunks,
-            "style_review"    : None,
-            "security_review" : None,
-            "perf_review"     : None,
-            "severity_level"  : "LOW",
-            "should_autofix"  : False,
-            "final_report"    : None,
-            "messages"        : []
+            "repo_name"      : repo_name,
+            "pr_number"      : pr_number,
+            "pr_title"       : pr_title,
+            "pr_author"      : pr_author,
+            "diff_chunks"    : diff_chunks,
+            "style_review"   : None,
+            "security_review": None,
+            "perf_review"    : None,
+            "arch_review"    : None,
+            "severity_level" : "LOW",
+            "should_autofix" : False,
+            "next_action"    : "normal",
+            "final_report"   : None,
+            "jira_tickets"   : None,
+            "github_comment" : None,
+            "messages"       : []
         }
 
         # Step 3 — run LangGraph
