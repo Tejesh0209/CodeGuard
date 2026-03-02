@@ -1,20 +1,22 @@
+
 import asyncio
 from typing import Literal
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from orchestration.state import CodeGuardState
-from agents.style_agent import StyleAgent
-from agents.security_agent import SecurityAgent
-from agents.performance_agent import PerformanceAgent
-from agents.arch_agent import ArchAgent
+from review_agents.style_agent import StyleAgent
+from review_agents.security_agent import SecurityAgent
+from review_agents.performance_agent import PerformanceAgent
+from review_agents.arch_agent import ArchAgent
 from tools.jira_client import JiraClient
+from tools.autofix_agent import run_autofix
 
 
 # ── Agent Nodes ──────────────────────────────────────────────────
 
 async def parallel_review_node(state: CodeGuardState) -> dict:
     """Run all 4 agents in parallel."""
-    print("\n🚀 Running all 4 agents in parallel...")
+    print("\nRunning all 4 agents in parallel...")
 
     style_result, security_result, perf_result, arch_result = await asyncio.gather(
         StyleAgent().review(state["diff_chunks"]),
@@ -55,24 +57,43 @@ async def parallel_review_node(state: CodeGuardState) -> dict:
 async def supervisor_node(state: CodeGuardState) -> dict:
     """
     Supervisor decides routing based on severity.
-    Sets next_action field to guide conditional edges.
+    CRITICAL → autofix_node → jira_node → aggregator
+    HIGH     → jira_node → aggregator
+    LOW/MED  → aggregator
     """
     severity = state.get("severity_level", "LOW")
-    print(f"\n🎯 Supervisor: severity={severity}")
+    print(f"\nSupervisor: severity={severity}")
 
     if severity == "CRITICAL":
-        print("   → Routing to: JIRA ticket + aggregator")
         next_action = "critical"
+        print("   Routing to: autofix -> jira -> aggregator")
     elif severity == "HIGH":
-        print("   → Routing to: JIRA ticket + aggregator")
         next_action = "high"
+        print("   Routing to: jira -> aggregator")
     else:
-        print("   → Routing to: aggregator only")
         next_action = "normal"
+        print("   Routing to: aggregator only")
 
     return {
         "next_action" : next_action,
         "messages"    : [f"Supervisor decision: {next_action}"]
+    }
+
+
+async def autofix_node(state: CodeGuardState) -> dict:
+    """Auto-Fix Agent node — fixes CRITICAL/HIGH issues automatically."""
+    print("\nAuto-Fix Agent triggered...")
+
+    final_report = state.get("final_report") or _build_report(state)
+    result       = await run_autofix(
+        repo_name    = state["repo_name"],
+        pr_number    = state["pr_number"],
+        final_report = final_report
+    )
+
+    return {
+        "autofix_result" : result,
+        "messages"       : [f"Auto-fix: {result.get('status')} — {result.get('fixed', 0)} issues fixed"]
     }
 
 
@@ -105,11 +126,11 @@ async def aggregator_node(state: CodeGuardState) -> dict:
     print(f"FINAL REPORT")
     print(f"{'='*60}")
     print(f"   Total Issues : {report['summary']['total_issues']}")
-    print(f"   Critical  : {report['summary']['critical']}")
-    print(f"   High      : {report['summary']['high']}")
-    print(f"   Medium    : {report['summary']['medium']}")
-    print(f"   Low       : {report['summary']['low']}")
-    print(f"   Approved  : {report['approved']}")
+    print(f"   Critical     : {report['summary']['critical']}")
+    print(f"   High         : {report['summary']['high']}")
+    print(f"   Medium       : {report['summary']['medium']}")
+    print(f"   Low          : {report['summary']['low']}")
+    print(f"   Approved     : {report['approved']}")
     print(f"{'='*60}\n")
 
     return {
@@ -127,9 +148,9 @@ async def post_comment_node(state: CodeGuardState) -> dict:
 
     print(f"\nPosting review comment to GitHub PR #{state['pr_number']}...")
     await post_pr_comment(
-        repo_name  = state["repo_name"],
-        pr_number  = state["pr_number"],
-        comment    = comment
+        repo_name = state["repo_name"],
+        pr_number = state["pr_number"],
+        comment   = comment
     )
     print(f"Comment posted!")
 
@@ -153,12 +174,12 @@ def _build_report(state: CodeGuardState) -> dict:
     low        = [i for i in all_issues if i.get("severity") == "LOW"]
 
     return {
-        "repo"            : state["repo_name"],
-        "pr_number"       : state["pr_number"],
-        "pr_title"        : state["pr_title"],
-        "severity"        : state.get("severity_level", "LOW"),
-        "approved"        : len(critical) == 0 and len(high) == 0,
-        "summary"         : {
+        "repo"     : state["repo_name"],
+        "pr_number": state["pr_number"],
+        "pr_title" : state["pr_title"],
+        "severity" : state.get("severity_level", "LOW"),
+        "approved" : len(critical) == 0 and len(high) == 0,
+        "summary"  : {
             "total_issues"   : len(all_issues),
             "critical"       : len(critical),
             "high"           : len(high),
@@ -187,10 +208,20 @@ def _format_github_comment(state: CodeGuardState, report: dict) -> str:
         "MEDIUM"  : "🟡", "LOW" : "🟢"
     }.get(severity, "⚪")
 
+    # Auto-fix note if it ran
+    autofix_result = state.get("autofix_result", {})
+    autofix_note   = ""
+    if autofix_result and autofix_result.get("status") == "completed":
+        autofix_note = (
+            f"\n> **Auto-Fix PR created** — "
+            f"{autofix_result.get('fixed', 0)} issues patched automatically. "
+            f"Check the Draft PR.\n"
+        )
+
     comment = f"""## CodeGuard Automated Review
 
 ### {verdict} {severity_emoji} Severity: {severity}
-
+{autofix_note}
 | Agent | Score | Issues |
 |-------|-------|--------|
 | Style | {summary.get('style_score', 0)}/10 | {len(report.get('style_issues', []))} |
@@ -206,7 +237,7 @@ def _format_github_comment(state: CodeGuardState, report: dict) -> str:
 - Total: **{summary.get('total_issues', 0)}**
 """
 
-    # Add critical issues prominently
+    # Critical issues
     critical_issues = [
         i for i in (
             report.get("security_issues", []) +
@@ -220,13 +251,13 @@ def _format_github_comment(state: CodeGuardState, report: dict) -> str:
     if critical_issues:
         comment += "\n### Critical Issues (Must Fix)\n"
         for issue in critical_issues:
-            comment += f"""
-> **{issue.get('file')}** line {issue.get('line')}
-> {issue.get('message')}
->  Fix: {issue.get('suggestion')}
-"""
+            comment += (
+                f"\n> **{issue.get('file')}** line {issue.get('line')}\n"
+                f"> {issue.get('message')}\n"
+                f"> Fix: {issue.get('suggestion')}\n"
+            )
 
-    # Add high issues
+    # High issues (max 5)
     high_issues = [
         i for i in (
             report.get("security_issues", []) +
@@ -239,7 +270,7 @@ def _format_github_comment(state: CodeGuardState, report: dict) -> str:
 
     if high_issues:
         comment += "\n### High Issues (Should Fix)\n"
-        for issue in high_issues[:5]:  # max 5 to avoid huge comments
+        for issue in high_issues[:5]:
             comment += f"- **{issue.get('file')}:{issue.get('line')}** — {issue.get('message')}\n"
 
     comment += "\n---\n*Reviewed by [CodeGuard](https://github.com/Tejesh0209/CodeGuard)*"
@@ -248,9 +279,13 @@ def _format_github_comment(state: CodeGuardState, report: dict) -> str:
 
 # ── Conditional Routing ──────────────────────────────────────────
 
-def route_after_supervisor(state: CodeGuardState) -> Literal["jira_node", "aggregator"]:
+def route_after_supervisor(
+    state: CodeGuardState
+) -> Literal["autofix_node", "jira_node", "aggregator"]:
     next_action = state.get("next_action", "normal")
-    if next_action in ["critical", "high"]:
+    if next_action == "critical":
+        return "autofix_node"
+    elif next_action == "high":
         return "jira_node"
     return "aggregator"
 
@@ -263,6 +298,7 @@ def build_graph():
     # Add all nodes
     graph.add_node("parallel_review", parallel_review_node)
     graph.add_node("supervisor",      supervisor_node)
+    graph.add_node("autofix_node",    autofix_node)
     graph.add_node("jira_node",       jira_node)
     graph.add_node("aggregator",      aggregator_node)
     graph.add_node("post_comment",    post_comment_node)
@@ -270,7 +306,7 @@ def build_graph():
     # Entry point
     graph.set_entry_point("parallel_review")
 
-    # Edges
+    # Fixed edges
     graph.add_edge("parallel_review", "supervisor")
 
     # Conditional routing from supervisor
@@ -278,19 +314,25 @@ def build_graph():
         "supervisor",
         route_after_supervisor,
         {
-            "jira_node"  : "jira_node",
-            "aggregator" : "aggregator"
+            "autofix_node" : "autofix_node",
+            "jira_node"    : "jira_node",
+            "aggregator"   : "aggregator"
         }
     )
 
-    # After JIRA → always go to aggregator
-    graph.add_edge("jira_node",    "aggregator")
+    # After autofix → jira (also create tickets for CRITICAL)
+    graph.add_edge("autofix_node", "jira_node")
+
+    # After jira → aggregator
+    graph.add_edge("jira_node",  "aggregator")
+
+    # After aggregator → post comment → done
     graph.add_edge("aggregator",   "post_comment")
     graph.add_edge("post_comment", END)
 
     checkpointer = MemorySaver()
     compiled     = graph.compile(checkpointer=checkpointer)
-    print("LangGraph compiled — 5 nodes, conditional routing")
+    print("LangGraph compiled — 6 nodes, conditional routing (autofix + jira + aggregator)")
     return compiled
 
 

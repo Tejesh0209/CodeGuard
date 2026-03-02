@@ -60,7 +60,8 @@ async def process_pr(payload: dict):
             "final_report"   : None,
             "jira_tickets"   : None,
             "github_comment" : None,
-            "messages"       : []
+            "messages"       : [],
+            "autofix_result" : None,
         }
 
         # Step 3 — run LangGraph

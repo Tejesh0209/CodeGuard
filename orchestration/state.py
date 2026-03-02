@@ -15,6 +15,7 @@ class CodeGuardState(TypedDict):
     security_review : Optional[dict]
     perf_review     : Optional[dict]
     arch_review     : Optional[dict]
+    autofix_result  : Optional[dict]
 
     # ── Control Flow ─────────────────────────────────────
     severity_level  : str

@@ -102,7 +102,7 @@ class PerformanceAgent:
     async def review(self, diff_chunks: list[dict]) -> dict:
         formatted_diff = self._format_diff(diff_chunks)
 
-        print(f"\n⚡ Performance Agent retrieving context...")
+        print(f"\nPerformance Agent retrieving context...")
         similar_chunks = self.retriever.retrieve(
             query=formatted_diff[:1000],
             repo="Tejesh0209/SentinelAI",
@@ -110,7 +110,7 @@ class PerformanceAgent:
         )
         team_context = self.retriever.format_for_prompt(similar_chunks)
 
-        print(f"⚡ Performance Agent analyzing bottlenecks...")
+        print(f"Performance Agent analyzing bottlenecks...")
 
         result = await self.chain.ainvoke({
             "diff"                : formatted_diff,
@@ -141,7 +141,7 @@ Changes:
         print(f"Approved   : {review.get('approved', False)}")
 
         issues = review.get('issues', [])
-        print(f"\n🔍 Performance Issues Found: {len(issues)}")
+        print(f"\nPerformance Issues Found: {len(issues)}")
 
         for i, issue in enumerate(issues, 1):
             severity_emoji = {

@@ -91,7 +91,7 @@ class SecurityAgent:
         )
         team_context = self.retriever.format_for_prompt(similar_chunks)
 
-        print(f"🔒 Security Agent analyzing vulnerabilities...")
+        print(f" Security Agent analyzing vulnerabilities...")
         result = await self.chain.ainvoke({
             "diff"                : formatted_diff,
             "team_context"        : team_context,
@@ -113,14 +113,14 @@ Changes:
 
     def _print_review(self, review: dict):
         print(f"\n{'='*60}")
-        print(f"🔒 SECURITY REVIEW COMPLETE")
+        print(f"SECURITY REVIEW COMPLETE")
         print(f"{'='*60}")
-        print(f"📋 Summary      : {review.get('pr_summary', 'N/A')}")
-        print(f"🎯 Risk Score   : {review.get('risk_score', 0)}/10")
-        print(f"🚨 Has Critical : {review.get('has_critical', False)}")
-        print(f"✅ Approved     : {review.get('approved', False)}")
+        print(f"Summary      : {review.get('pr_summary', 'N/A')}")
+        print(f"Risk Score   : {review.get('risk_score', 0)}/10")
+        print(f"Has Critical : {review.get('has_critical', False)}")
+        print(f"Approved     : {review.get('approved', False)}")
         issues = review.get('issues', [])
-        print(f"\n🔍 Vulnerabilities Found: {len(issues)}")
+        print(f"\nVulnerabilities Found: {len(issues)}")
         for i, issue in enumerate(issues, 1):
             severity_emoji = {"CRITICAL": "🚨", "HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(issue.get('severity', 'LOW'), "⚪")
             print(f"\n  {i}. {severity_emoji} [{issue.get('severity')}] {issue.get('category', '').upper()} — {issue.get('cwe_id')}")

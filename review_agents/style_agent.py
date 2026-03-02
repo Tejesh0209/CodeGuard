@@ -82,7 +82,7 @@ class StyleAgent:
         formatted_diff = self._format_diff(diff_chunks)
 
         # RAG — retrieve similar code from team codebase
-        print(f"\n🔍 Retrieving similar code from team codebase...")
+        print(f"\nRetrieving similar code from team codebase...")
         similar_chunks = self.retriever.retrieve(
             query=formatted_diff[:1000],
             repo="Tejesh0209/SentinelAI",
@@ -123,7 +123,7 @@ Changes:
         print(f"Approved: {review.get('approved', False)}")
 
         issues = review.get('issues', [])
-        print(f"\n🔍 Issues Found: {len(issues)}")
+        print(f"\nIssues Found: {len(issues)}")
 
         for i, issue in enumerate(issues, 1):
             severity_emoji = {
