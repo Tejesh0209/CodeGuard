@@ -91,7 +91,7 @@ class JiraClient:
             if i.get("severity") in ["HIGH", "CRITICAL"]
         ]
 
-        print(f"\n🎫 Creating JIRA tickets for {len(high_plus)} HIGH+ issues...")
+        print(f"\nCreating JIRA tickets for {len(high_plus)} HIGH+ issues...")
 
         for issue in high_plus:
             severity = issue.get("severity", "HIGH")

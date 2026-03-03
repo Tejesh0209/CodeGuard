@@ -32,7 +32,7 @@ async def process_pr(payload: dict):
         pr_author = payload["pull_request"]["user"]["login"]
 
         print(f"\n{'='*60}")
-        print(f"🔍 CodeGuard — New PR Detected")
+        print(f"CodeGuard — New PR Detected")
         print(f"   Repo   : {repo_name}")
         print(f"   PR #   : {pr_number}")
         print(f"   Title  : {pr_title}")
@@ -62,6 +62,8 @@ async def process_pr(payload: dict):
             "github_comment" : None,
             "messages"       : [],
             "autofix_result" : None,
+            "context_result"      : None,
+            "notification_result" : None,
         }
 
         # Step 3 — run LangGraph
