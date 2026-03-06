@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from tools.model_router import get_llm_for_task
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
@@ -71,11 +71,7 @@ Return your security review in the exact JSON format specified."""
 
 class SecurityAgent:
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0,
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+        self.llm = get_llm_for_task(task="security", severity="LOW")
         self.parser    = JsonOutputParser(pydantic_object=SecurityReview)
         self.chain     = SECURITY_PROMPT | self.llm | self.parser
         self.retriever = CodeRetriever()
@@ -83,7 +79,7 @@ class SecurityAgent:
     async def review(self, diff_chunks: list[dict]) -> dict:
         formatted_diff = self._format_diff(diff_chunks)
 
-        print(f"\n🔒 Security Agent retrieving context...")
+        print(f"\n Security Agent retrieving context...")
         similar_chunks = self.retriever.retrieve(
             query=formatted_diff[:1000],
             repo="Tejesh0209/SentinelAI",
@@ -122,7 +118,7 @@ Changes:
         issues = review.get('issues', [])
         print(f"\nVulnerabilities Found: {len(issues)}")
         for i, issue in enumerate(issues, 1):
-            severity_emoji = {"CRITICAL": "🚨", "HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(issue.get('severity', 'LOW'), "⚪")
+            severity_emoji = {"CRITICAL": "", "HIGH": "", "MEDIUM": "", "LOW": ""}.get(issue.get('severity', 'LOW'), "")
             print(f"\n  {i}. {severity_emoji} [{issue.get('severity')}] {issue.get('category', '').upper()} — {issue.get('cwe_id')}")
             print(f"     File        : {issue.get('file')}")
             print(f"     Line        : {issue.get('line')}")

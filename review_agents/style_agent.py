@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from tools.model_router import get_llm_for_task
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
@@ -69,11 +69,7 @@ Reference specific examples from the team codebase when flagging issues."""
 
 class StyleAgent:
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0,
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+        self.llm = get_llm_for_task(task="style", severity="LOW")
         self.parser    = JsonOutputParser(pydantic_object=StyleReview)
         self.chain     = STYLE_PROMPT | self.llm | self.parser
         self.retriever = CodeRetriever()
@@ -89,7 +85,7 @@ class StyleAgent:
             top_k=5
         )
         team_context = self.retriever.format_for_prompt(similar_chunks)
-        print(f"   Found {len(similar_chunks)} similar patterns ✅")
+        print(f"   Found {len(similar_chunks)} similar patterns ")
 
         print(f"\nStyle Agent starting review...")
         print(f"   Analyzing {len(diff_chunks)} file(s) with team context...")
@@ -127,10 +123,10 @@ Changes:
 
         for i, issue in enumerate(issues, 1):
             severity_emoji = {
-                "HIGH"  : "🔴",
-                "MEDIUM": "🟡",
-                "LOW"   : "🟢"
-            }.get(issue.get('severity', 'LOW'), "⚪")
+                "HIGH"  : "",
+                "MEDIUM": "",
+                "LOW"   : ""
+            }.get(issue.get('severity', 'LOW'), "")
 
             print(f"\n  {i}. {severity_emoji} [{issue.get('severity')}] {issue.get('category', '').upper()}")
             print(f"     File  : {issue.get('file')}")

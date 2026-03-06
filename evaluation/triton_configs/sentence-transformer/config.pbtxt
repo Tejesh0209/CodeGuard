@@ -1,0 +1,29 @@
+
+name: "sentence-transformer"
+platform: "onnxruntime_onnx"
+max_batch_size: 32
+dynamic_batching {
+  preferred_batch_size: [8, 16, 32]
+  max_queue_delay_microseconds: 100
+}
+input [
+  {
+    name: "TEXT"
+    data_type: TYPE_BYTES
+    dims: [1]
+  }
+]
+output [
+  {
+    name: "EMBEDDING"
+    data_type: TYPE_FP32
+    dims: [384]
+  }
+]
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+    gpus: [0]
+  }
+]

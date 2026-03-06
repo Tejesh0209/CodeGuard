@@ -1,0 +1,34 @@
+
+name: "cross-encoder"
+platform: "onnxruntime_onnx"
+max_batch_size: 16
+dynamic_batching {
+  preferred_batch_size: [4, 8, 16]
+  max_queue_delay_microseconds: 200
+}
+input [
+  {
+    name: "QUERY"
+    data_type: TYPE_BYTES
+    dims: [1]
+  },
+  {
+    name: "DOCUMENT"
+    data_type: TYPE_BYTES
+    dims: [1]
+  }
+]
+output [
+  {
+    name: "SCORE"
+    data_type: TYPE_FP32
+    dims: [1]
+  }
+]
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+    gpus: [0]
+  }
+]

@@ -147,6 +147,18 @@ class HybridRetriever:
         self.client.close()
 
 
+
+# ── Singleton ─────────────────────────────────────────────────────
+# Shared across all 4 agents - loads models only ONCE
+_hybrid_retriever_instance = None
+
+def get_hybrid_retriever() -> HybridRetriever:
+    global _hybrid_retriever_instance
+    if _hybrid_retriever_instance is None:
+        _hybrid_retriever_instance = HybridRetriever()
+    return _hybrid_retriever_instance
+
+
 # ── Compatibility wrapper ─────────────────────────────────────────
 # Keeps existing agent code working without changes
 
@@ -154,7 +166,7 @@ class CodeRetriever:
     """Drop-in replacement for old pgvector CodeRetriever."""
 
     def __init__(self):
-        self._hybrid = HybridRetriever()
+        self._hybrid = get_hybrid_retriever()
 
     def retrieve(self, query: str, repo: str, top_k: int = 5) -> List[Dict]:
         results = self._hybrid.retrieve(query, repo, top_k=top_k)
@@ -198,7 +210,7 @@ class CodeRetriever:
     """Drop-in replacement for old pgvector CodeRetriever."""
 
     def __init__(self):
-        self._hybrid = HybridRetriever()
+        self._hybrid = get_hybrid_retriever()
 
     def retrieve(self, query: str, repo: str, top_k: int = 5) -> List[Dict]:
         results = self._hybrid.retrieve(query, repo, top_k=top_k)

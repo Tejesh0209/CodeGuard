@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from tools.model_router import get_llm_for_task
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
@@ -78,11 +78,7 @@ Return your architecture review in the exact JSON format specified."""
 
 class ArchAgent:
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0,
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+        self.llm = get_llm_for_task(task="architecture", severity="LOW")
         self.parser    = JsonOutputParser(pydantic_object=ArchReview)
         self.chain     = ARCH_PROMPT | self.llm | self.parser
         self.retriever = CodeRetriever()
@@ -120,7 +116,7 @@ Changes:
 
     def _print_review(self, review: dict):
         print(f"\n{'='*60}")
-        print(f"🏗️  ARCHITECTURE REVIEW COMPLETE")
+        print(f"  ARCHITECTURE REVIEW COMPLETE")
         print(f"{'='*60}")
         print(f"Summary    : {review.get('pr_summary', 'N/A')}")
         print(f"Arch Score : {review.get('arch_score', 0)}/10")
@@ -129,10 +125,10 @@ Changes:
         print(f"\nArchitecture Issues Found: {len(issues)}")
         for i, issue in enumerate(issues, 1):
             severity_emoji = {
-                "HIGH"  : "🔴",
-                "MEDIUM": "🟡",
-                "LOW"   : "🟢"
-            }.get(issue.get('severity', 'LOW'), "⚪")
+                "HIGH"  : "",
+                "MEDIUM": "",
+                "LOW"   : ""
+            }.get(issue.get('severity', 'LOW'), "")
             print(f"\n  {i}. {severity_emoji} [{issue.get('severity')}] "
                   f"{issue.get('principle', '').upper()}")
             print(f"     File    : {issue.get('file')}")
