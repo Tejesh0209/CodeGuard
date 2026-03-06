@@ -4,6 +4,7 @@ import json
 import os
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from dotenv import load_dotenv
+from observability.prometheus_metrics import metrics
 from api.github_client import fetch_pr_diff
 from orchestration.graph import codeguard_graph
 
@@ -25,6 +26,7 @@ def verify_signature(payload: bytes, signature: str) -> bool:
 
 
 async def process_pr(payload: dict):
+    metrics.record_review_start()
     try:
         repo_name = payload["repository"]["full_name"]
         pr_number = payload["pull_request"]["number"]

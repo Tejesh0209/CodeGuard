@@ -1,0 +1,58 @@
+{
+  "title": "CodeGuard - AI Code Review Dashboard",
+  "panels": [
+    {
+      "title": "Reviews Per Minute",
+      "type": "graph",
+      "targets": [{"expr": "rate(codeguard_reviews_total[1m])"}]
+    },
+    {
+      "title": "P99 Review Latency",
+      "type": "stat",
+      "targets": [{"expr": "histogram_quantile(0.99, codeguard_review_latency_seconds_bucket)"}]
+    },
+    {
+      "title": "Critical Issues Found (Today)",
+      "type": "stat",
+      "targets": [{"expr": "sum(codeguard_issues_found_total{severity='CRITICAL'})"}]
+    },
+    {
+      "title": "Total LLM Cost (USD)",
+      "type": "stat",
+      "targets": [{"expr": "sum(codeguard_llm_cost_usd_total)"}]
+    },
+    {
+      "title": "Model Latency Comparison",
+      "type": "graph",
+      "targets": [
+        {"expr": "histogram_quantile(0.95, rate(codeguard_llm_latency_seconds_bucket{model='gpt-4o'}[5m]))", "legendFormat": "GPT-4o p95"},
+        {"expr": "histogram_quantile(0.95, rate(codeguard_llm_latency_seconds_bucket{model='deepseek-v3'}[5m]))", "legendFormat": "DeepSeek p95"}
+      ]
+    },
+    {
+      "title": "RAG Retrieval Latency",
+      "type": "graph",
+      "targets": [{"expr": "histogram_quantile(0.50, codeguard_rag_retrieval_latency_seconds_bucket)", "legendFormat": "p50 retrieval"}]
+    },
+    {
+      "title": "Canary Traffic Split",
+      "type": "piechart",
+      "targets": [{"expr": "codeguard_canary_traffic_percent"}]
+    },
+    {
+      "title": "A/B Test Calls",
+      "type": "bargauge",
+      "targets": [{"expr": "codeguard_ab_test_calls"}]
+    },
+    {
+      "title": "Active Reviews",
+      "type": "gauge",
+      "targets": [{"expr": "codeguard_active_reviews"}]
+    },
+    {
+      "title": "Error Rate",
+      "type": "graph",
+      "targets": [{"expr": "rate(codeguard_errors_total[5m])"}]
+    }
+  ]
+}
